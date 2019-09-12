@@ -1,0 +1,9 @@
+import pandas as pd
+
+ans1=pd.read_csv('xgboost_all.csv')
+ans2=pd.read_csv('liightgbm_all.csv')
+
+ensemble_ave=(ans1[['deal_or_not']]+ans2[['deal_or_not']])/2
+
+fianl=pd.concat([ans1[['order_id']],ensemble_ave[['deal_or_not']]],axis=1)
+fianl.to_csv("ensemble_all.csv", sep=',', encoding='utf-8', index=False)
