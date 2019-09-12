@@ -1,0 +1,458 @@
+
+
+import pandas as pd
+import numpy as np
+import  datetime
+import matplotlib.pyplot as plt
+import re
+from scipy import stats
+
+#讀取資料
+
+order_csv=pd.read_csv("order.csv",low_memory=False)
+group_csv=pd.read_csv("group.csv",low_memory=False)
+airline_csv=pd.read_csv("airline.csv",low_memory=False)
+day_schedule_csv=pd.read_csv("day_schedule.csv",low_memory=False)
+train_csv=pd.read_csv("training-set.csv",low_memory=False)
+test_csv=pd.read_csv("testing-set.csv",low_memory=False)
+discount_csv=pd.read_csv("discount.csv",low_memory=False)
+topic_csv=pd.read_csv("topics_model.csv",low_memory=False)
+
+order_csv["order_id"]=order_csv["order_id"].astype(str)
+order_csv["group_id"]=order_csv["group_id"].astype(str)
+train_csv["order_id"]=train_csv["order_id"].astype(str)
+test_csv["order_id"]=test_csv["order_id"].astype(str)
+group_csv["group_id"]=group_csv["group_id"].astype(str)
+airline_csv["group_id"]=airline_csv["group_id"].astype(str)
+day_schedule_csv["group_id"]=day_schedule_csv["group_id"].astype(str)
+print('read data done')
+
+#計算每一個group的出發及到達時間，以及出發及到達的機場
+group=airline_csv.groupby(['group_id']).sum()
+first_last_fly=[]
+for i in range(len(group)):
+    temp=[]
+    first_fly_month=group.iloc[i,:][1].split('/')[1]
+    first_fly_hour=group.iloc[i,:][1].split(' ')[1]
+    first_fly_hour=int(first_fly_hour.split(':')[0])
+    first_fly_weekday=group.iloc[i,:][1].split(' ')[0]
+    first_fly_year, first_fly_month, first_fly_day = (int(x) for x in first_fly_weekday.split('/'))    
+    first_fly_weekday = datetime.date(first_fly_year, first_fly_month, first_fly_day).weekday()
+    first_fly_location=group.iloc[i,:][2].split(' ')[0]
+    
+    last_fly_month=group.iloc[i,:][3].split(' ')[-2]
+    last_fly_month=last_fly_month.split('/')[1]
+    last_fly_hour=group.iloc[i,:][1].split(' ')[-1]
+    last_fly_hour=int(last_fly_hour.split(':')[0])
+    
+    last_fly_weekday=group.iloc[i,:][3].split('201')[-1]
+    last_fly_weekday='201'+last_fly_weekday.split(' ')[0]
+    last_fly_year, last_fly_month, last_fly_day = (int(x) for x in last_fly_weekday.split('/'))    
+    last_fly_weekday = datetime.date(last_fly_year, last_fly_month, last_fly_day).weekday()
+    last_fly_location=group.iloc[i,:][4].split(' ')[-1]
+    
+    if last_fly_location == '桃園機場':
+        last_fly_location = 'TPE'
+    elif last_fly_location == '高雄機場':
+        last_fly_location = 'KHH'
+    elif last_fly_location == '台北松山機場':
+        last_fly_location = 'TSA'
+    else:
+        last_fly_location = 'others'
+    #計算轉機次數
+    flight_transfer=len(group.iloc[i,:][0].split('程'))-1
+    #分類班機的出發及到達時間
+    if (first_fly_hour >=0 |  first_fly_hour <=8) & (last_fly_hour <= 7 | last_fly_hour >=0 | last_fly_hour >=23):
+        goback=0
+    
+    elif first_fly_hour >= 18 & last_fly_hour <= 10:
+        goback=1
+   
+    elif first_fly_hour <= 10 & last_fly_hour  >=20:
+        goback=2
+        
+    elif first_fly_hour <= 10 & last_fly_hour <= 12:
+        goback=3
+        
+    elif first_fly_hour >= 16 & last_fly_hour >= 16:
+        goback=4
+    
+    elif first_fly_hour <= 8 & last_fly_hour >= 22 | last_fly_hour <= 8 :
+        goback=5
+   
+    else:
+        goback=6
+    #分類出發及到達時間是否為Summer Vacation
+    if first_fly_month ==7 or first_fly_month ==8:    
+        first_fly_summer=1
+    else:
+        first_fly_summer=0
+        
+    if last_fly_month ==7 or last_fly_month ==8:    
+        last_fly_summer=1
+    else:
+        last_fly_summer=0
+    #分類出發及到達時間是否為Winter vacation    
+    if first_fly_month ==1 or first_fly_month ==2:    
+        first_fly_winter=1
+    else:
+        first_fly_winter=0
+        
+    if last_fly_month ==1 or last_fly_month ==2:    
+        last_fly_winter=1
+    else:
+        last_fly_winter=0
+    #分類出發及到達時間的Season
+    if first_fly_month ==12 or first_fly_month ==1 or first_fly_month ==2:    
+        first_fly_season=4
+    elif first_fly_month ==3 or first_fly_month ==4 or first_fly_month ==5:
+        first_fly_season=1
+    elif first_fly_month ==6 or first_fly_month ==7 or first_fly_month ==8:
+        first_fly_season=2
+    else:
+        first_fly_season=3
+        
+    if last_fly_month ==12 or last_fly_month ==1 or last_fly_month ==2:    
+        last_fly_season=4
+    elif last_fly_month ==3 or last_fly_month ==4 or last_fly_month ==5:
+        last_fly_season=1
+    elif last_fly_month ==6 or last_fly_month ==7 or last_fly_month ==8:
+        last_fly_season=2
+    else:
+        last_fly_season=3
+    
+    temp.append(group.iloc[i,:].name)
+    temp.append(first_fly_month)
+    temp.append(first_fly_hour)
+    temp.append(first_fly_weekday)
+    temp.append(first_fly_location)
+    temp.append(last_fly_month)
+    temp.append(last_fly_hour)
+    temp.append(last_fly_weekday)
+    temp.append(last_fly_location)
+    temp.append(flight_transfer)
+    temp.append(goback)
+    temp.append(first_fly_summer)
+    temp.append(last_fly_summer)
+    temp.append(first_fly_winter)
+    temp.append(last_fly_winter)
+    temp.append(first_fly_season)
+    temp.append(last_fly_season)
+    first_last_fly.append(temp)
+first_last_fly=pd.DataFrame(first_last_fly)
+first_last_fly.columns = ['group_id','first_fly_month','first_fly_hour','first_fly_weekday','first_fly_location','last_fly_month','last_fly_hour','last_fly_weekday','last_fly_location','flight_transfer','goback',
+                          'first_fly_summer','last_fly_summer','first_fly_winter','last_fly_winter','first_fly_season','last_fly_season']
+
+
+#計算最大拉車距離，總共拉幾次車，每日平均拉車次數
+day_schedule_csv[['title']]=day_schedule_csv[['title']].astype(str) 
+group_sched=pd.DataFrame(day_schedule_csv.groupby('group_id')['title'].apply(lambda x: "%s" % ', '.join(x)))
+group_day=pd.DataFrame(day_schedule_csv.groupby(['group_id'])['day'].max())
+
+total_trip_dist=[]
+max_trip_dist=[] 
+total_trip_time=[]  
+total_trip_time_per_day=[] 
+group_id=[]
+for i in range(len(group)):
+    km=[]
+    a=re.split('km|KM|Km|',group_sched.iloc[i,:][0])
+    for j in range(len(a)):
+        b=re.split('約| |\(',a[j])[-1]
+        try:
+            to_int=int(b)
+            km.append(to_int)
+        except:
+            pass
+    group_id.append(group_sched.iloc[i,:].name)
+    total_trip_dist.append(sum(km))
+    max_trip_dist.append(max(km, default=0))
+    total_trip_time.append(len(km))
+    total_trip_time_per_day.append(len(km)/group_day.iloc[i,:][0])
+    
+trip_dist_data = {'group_id':group_id,'total_trip_dist': total_trip_dist,'max_trip_dist': max_trip_dist, 'total_trip_time': total_trip_time, 'total_trip_time_per_day': total_trip_time_per_day}
+trip_dist_data = pd.concat([pd.Series(v, name=k) for k, v in trip_dist_data.items()], axis=1)
+    
+#結合CSV
+df_n=pd.concat([discount_csv,topic_csv],axis=1)
+group_csv=pd.concat([group_csv,df_n],axis=1)
+df=pd.concat([train_csv,test_csv],axis=0).reset_index()
+df=pd.merge(df, order_csv, on="order_id")
+df=pd.merge(df, group_csv, on="group_id")
+df=pd.merge(df, first_last_fly, on="group_id" ,how='left')
+df=pd.merge(df, trip_dist_data, on="group_id",how='left')
+
+
+# 訂購日期與出發日期差距 以秒計算
+df['time']= pd.DataFrame((pd.to_datetime(df['begin_date']) - pd.to_datetime(df['order_date'])).dt.total_seconds())
+# 每筆order總花費
+df['price_per_order']=df['price']*df['people_amount']
+
+#將訂購時間與到達時間原始的日期資料以日期方式分開
+df["order_date"] , df["begin_date"] = pd.to_datetime(df["order_date"]) ,pd.to_datetime(df["begin_date"])
+df["order_year"], df["order_month"], df["order_weekday"] = df["order_date"].apply(lambda x: x.year) ,df["order_date"].apply(lambda x: x.month) ,df["order_date"].dt.dayofweek
+df["begin_year"], df["begin_month"], df["begin_weekday"] = df["begin_date"].apply(lambda x: x.year) ,df["begin_date"].apply(lambda x: x.month) ,df["begin_date"].dt.dayofweek
+
+
+#每日平均花費
+df['price_per_day']=df['price']/df['days']
+
+#計算不同的group_id、source_1、1source_2、unit、area、sub_line有幾個order
+df_group_count_order = df.groupby(["group_id"])["order_id"].count().reset_index(name="group_count_order")
+df = df.join(df_group_count_order.set_index('group_id'), on='group_id')
+
+df_sr1_count_order = df.groupby(["source_1"])["order_id"].count().reset_index(name="sr1_count_order")
+df = df.join(df_sr1_count_order.set_index('source_1'), on='source_1')
+
+df_sr2_count_order = df.groupby(["source_2"])["order_id"].count().reset_index(name="sr2_count_order")
+df = df.join(df_sr2_count_order.set_index('source_2'), on='source_2')
+
+df_unit_count_order = df.groupby(["unit"])["order_id"].count().reset_index(name="unit_count_order")
+df = df.join(df_unit_count_order.set_index('unit'), on='unit')
+
+df_area_count_order = df.groupby(["area"])["order_id"].count().reset_index(name="area_count_order")
+df = df.join(df_area_count_order.set_index('area'), on='area')
+
+df_subline_count_order = df.groupby(["sub_line"])["order_id"].count().reset_index(name="subline_count_order")
+df = df.join(df_subline_count_order.set_index('sub_line'), on='sub_line')
+
+#計算不同的source_1、1source_2、unit、area、sub_line有幾個gropi id 
+
+df_sr1_count_group = df.groupby(["source_1"])["group_id"].nunique().reset_index(name="sr1_count_group")
+df = df.join(df_sr1_count_group.set_index('source_1'), on='source_1')
+
+df_sr2_count_group = df.groupby(["source_2"])["group_id"].nunique().reset_index(name="sr2_count_group")
+df = df.join(df_sr2_count_group.set_index('source_2'), on='source_2')
+
+df_unit_count_group = df.groupby(["unit"])["group_id"].nunique().reset_index(name="unit_count_group")
+df = df.join(df_unit_count_group.set_index('unit'), on='unit')
+
+df_area_count_group = df.groupby(["area"])["group_id"].nunique().reset_index(name="area_count_group")
+df = df.join(df_area_count_group.set_index('area'), on='area')
+
+df_subline_count_group = df.groupby(["sub_line"])["group_id"].nunique().reset_index(name="subline_count_group")
+df = df.join(df_subline_count_group.set_index('sub_line'), on='sub_line')
+
+#計算不同的group_id有多少people_amount
+group_sum_people = df.groupby('group_id')['people_amount'].sum().reset_index(name='group_sum_people')
+df = df.join(group_sum_people.set_index('group_id'), on='group_id')
+#計算不同的product_name有多少不同的group_id
+proname_count_group = df.groupby('product_name')['group_id'].nunique().reset_index(name='proname_count_group')
+df = df.join(proname_count_group.set_index('product_name'), on='product_name')
+#計算不同的product_name有多少的order_id
+proname_count_order = df.groupby('product_name')['order_id'].count().reset_index(name='proname_count_order')
+df = df.join(proname_count_order.set_index('product_name'), on='product_name')
+
+
+
+#把price, time, people, price per order, price per day, days切成不同的等級
+price_group_names=["price_0","price_1","price_2","price_3","price_4","price_5","price_6","price_7","price_8"]
+bins = [0, 10000, 20000, 30000, 40000, 50000, 75000, 100000, 170000, 300000]
+price_level = pd.cut(df["price"], bins, labels = price_group_names)
+pd.value_counts(price_level)
+
+
+time_group_names=["time_0","time_1","time_2","time_3","time_4","time_5","time_6","time_7","time_8","time_9","time_10","time_11","time_12"]
+bins = [-1000000, 0, 86500, 260000, 605000, 1210000, 1820000, 2593000, 3900000, 5200000,7777000,10400000,13000000,1000000000000]
+time_level = pd.cut(df["time"], bins, labels = time_group_names)
+pd.value_counts(time_level)
+
+
+people_amount_group_names=["people_amount_0","people_amount_1","people_amount_2","people_amount_3","people_amount_4","people_amount_5","people_amount_6","people_amount_7"
+                           ,"people_amount_8","people_amount_9","people_amount_10","people_amount_11","people_amount_12"]
+bins = [0, 1, 2, 3, 4, 5, 6, 8, 10, 15,20,30,40,50]
+people_amount_level = pd.cut(df["people_amount"], bins, labels = people_amount_group_names)
+pd.value_counts(people_amount_level)
+
+
+days_group_names=["days_0","days_1","days_2","days_3","days_4","days_5","days_6","days_7","days_8","days_9","days_10"]
+bins = [0, 3, 4, 5, 6, 7, 8, 9, 10, 12,15,20]
+days_level = pd.cut(df["days"], bins, labels = days_group_names)
+pd.value_counts(days_level)
+
+
+price_per_order_group_names=["price_per_order_0","price_per_order_1","price_per_order_2","price_per_order_3","price_per_order_4","price_per_order_5","price_per_order_6"
+                             ,"price_per_order_7","price_per_order_8","price_per_order_9","price_per_order_10","price_per_order_11"]
+bins = [0, 20000, 40000, 60000, 80000, 100000, 130000, 160000, 200000, 250000,400000,800000,10000000000000]
+price_per_order_level = pd.cut(df["price_per_order"], bins, labels = price_per_order_group_names)
+pd.value_counts(price_per_order_level)
+
+
+price_per_day_group_names=["price_per_day_0","price_per_day_1","price_per_day_2","price_per_day_3","price_per_day_4","price_per_day_5","price_per_day_6"
+                             ,"price_per_day_7","price_per_day_8","price_per_day_9","price_per_day_10","price_per_day_11"]
+bins = [0, 2000, 3000, 4000, 5000, 6000 ,7500, 9000, 11500, 14000, 17000,20000,30000]
+price_per_day_level = pd.cut(df["price_per_day"], bins, labels = price_per_day_group_names)
+pd.value_counts(price_per_day_level)
+
+df["price_level"]=price_level
+df["time_level"]=time_level
+df["price_per_order_level"]=price_per_order_level
+df["price_per_day_level"]=price_per_day_level
+df["days_level"]=days_level
+df["people_amount_level"]=people_amount_level
+
+
+
+print('preprocess end')
+
+#計算每個X的Y的統計量
+X=["group_id","product_name","area","sub_line","order_weekday","source_1","source_2","unit","begin_month"
+   ,"last_fly_month","order_month","first_fly_hour","last_fly_hour","begin_weekday","last_fly_weekday"
+   ,"price_level","time_level","price_per_order_level","price_per_day_level","days_level","people_amount_level"]
+
+Y=["time","price_per_order","price","people_amount","price_per_day","days"]
+
+for i in range(len(X)):
+    for j in range(len(Y)):
+
+        
+        df_mean = df.groupby(X[i])[Y[j]].mean().reset_index(name="mean_"+str(Y[j])+"_on_"+str(X[i]))
+        df = df.join(df_mean.set_index(X[i]), on=X[i])
+        
+        df_max = df.groupby(X[i])[Y[j]].max().reset_index(name="max_"+str(Y[j])+"_on_"+str(X[i]))
+        df = df.join(df_max.set_index(X[i]), on=X[i])
+        
+        df_min = df.groupby(X[i])[Y[j]].min().reset_index(name="min_"+str(Y[j])+"_on_"+str(X[i]))
+        df = df.join(df_min.set_index(X[i]), on=X[i])
+        
+        df_var = df.groupby(X[i])[Y[j]].var().reset_index(name="var_"+str(Y[j])+"_on_"+str(X[i]))
+        df = df.join(df_var.set_index(X[i]), on=X[i])
+        
+        df_median = df.groupby(X[i])[Y[j]].median().reset_index(name="median_"+str(Y[j])+"_on_"+str(X[i]))
+        df = df.join(df_median.set_index(X[i]), on=X[i])
+        
+        df_quantile = df.groupby(X[i])[Y[j]].quantile().reset_index(name="quantile_"+str(Y[j])+"_on_"+str(X[i]))
+        df = df.join(df_quantile.set_index(X[i]), on=X[i])
+        
+        df_mode = df.groupby(X[i])[Y[j]].agg(lambda x: stats.mode(x)[0][0]).reset_index(name="mode_"+str(Y[j])+"_on_"+str(X[i]))
+        df = df.join(df_mode.set_index(X[i]), on=X[i])
+        
+        df_percent = df.groupby(X[i])[Y[j]].describe(percentiles=[0.05, 0.1, 0.2, 0.25, 0.3, 0.4, 0.6, 0.7, 0.75, 0.8, 0.9, 0.95])[['5%','10%','20%','25%','30%','40%','60%','70%','75%','80%','90%','95%']]
+        df_percent.columns=['percent05_'+str(Y[j])+"_on_"+str(X[i]),'percent10_'+str(Y[j])+"_on_"+str(X[i]),
+                            'percent20_'+str(Y[j])+"_on_"+str(X[i]),'percent25_'+str(Y[j])+"_on_"+str(X[i]),
+                            'percent30_'+str(Y[j])+"_on_"+str(X[i]),'percent40_'+str(Y[j])+"_on_"+str(X[i]),
+                            'percent60_'+str(Y[j])+"_on_"+str(X[i]),'percent70_'+str(Y[j])+"_on_"+str(X[i]),
+                            'percent75_'+str(Y[j])+"_on_"+str(X[i]),'percent80_'+str(Y[j])+"_on_"+str(X[i]),
+                            'percent90_'+str(Y[j])+"_on_"+str(X[i]),'percent95_'+str(Y[j])+"_on_"+str(X[i])]
+        
+        df = df.join(df_percent, on=X[i])
+        
+        df["dif_"+str(Y[j])+"_on_"+str(X[i])]= df["max_"+str(Y[j])+"_on_"+str(X[i])] - df["min_"+str(Y[j])+"_on_"+str(X[i])]
+        
+        df["dif_mean_med_"+str(Y[j])+"_on_"+str(X[i])]=abs(df["mean_"+str(Y[j])+"_on_"+str(X[i])] - df["median_"+str(Y[j])+"_on_"+str(X[i])])
+        
+        df["dif_percent90_percent10_"+str(Y[j])+"_on_"+str(X[i])]=abs(df["percent90_"+str(Y[j])+"_on_"+str(X[i])] - df["percent10_"+str(Y[j])+"_on_"+str(X[i])])
+
+        df["dif_percent60_percent40_"+str(Y[j])+"_on_"+str(X[i])]=abs(df["percent60_"+str(Y[j])+"_on_"+str(X[i])] - df["percent40_"+str(Y[j])+"_on_"+str(X[i])])
+        
+        df["dif_percent80_percent20_"+str(Y[j])+"_on_"+str(X[i])]=abs(df["percent80_"+str(Y[j])+"_on_"+str(X[i])] - df["percent20_"+str(Y[j])+"_on_"+str(X[i])])
+
+        df["dif_percent70_percent30_"+str(Y[j])+"_on_"+str(X[i])]=abs(df["percent70_"+str(Y[j])+"_on_"+str(X[i])] - df["percent30_"+str(Y[j])+"_on_"+str(X[i])])
+
+        df["dif_percent05_percent95_"+str(Y[j])+"_on_"+str(X[i])]=abs(df["percent05_"+str(Y[j])+"_on_"+str(X[i])] - df["percent95_"+str(Y[j])+"_on_"+str(X[i])])
+
+        df["dif_max_mean_"+str(Y[j])+"_on_"+str(X[i])]=abs(df["mean_"+str(Y[j])+"_on_"+str(X[i])] - df["max_"+str(Y[j])+"_on_"+str(X[i])])
+
+        df["dif_min_mean_"+str(Y[j])+"_on_"+str(X[i])]=abs(df["mean_"+str(Y[j])+"_on_"+str(X[i])] - df["min_"+str(Y[j])+"_on_"+str(X[i])])
+        
+        df["dif_mean_75p_"+str(Y[j])+"_on_"+str(X[i])]=abs(df["mean_"+str(Y[j])+"_on_"+str(X[i])] - df["percent75_"+str(Y[j])+"_on_"+str(X[i])])
+       
+        df["dif_mean_25p_"+str(Y[j])+"_on_"+str(X[i])]=abs(df["mean_"+str(Y[j])+"_on_"+str(X[i])] - df["percent25_"+str(Y[j])+"_on_"+str(X[i])])
+
+        df["dif_max_75p_"+str(Y[j])+"_on_"+str(X[i])]=abs(df["max_"+str(Y[j])+"_on_"+str(X[i])] - df["percent75_"+str(Y[j])+"_on_"+str(X[i])])
+
+        df["dif_min_25p_"+str(Y[j])+"_on_"+str(X[i])]=abs(df["min_"+str(Y[j])+"_on_"+str(X[i])] - df["percent25_"+str(Y[j])+"_on_"+str(X[i])])
+        
+        df["dif_median_75p_"+str(Y[j])+"_on_"+str(X[i])]=abs(df["median_"+str(Y[j])+"_on_"+str(X[i])] - df["percent75_"+str(Y[j])+"_on_"+str(X[i])])
+
+        df["dif_median_25p_"+str(Y[j])+"_on_"+str(X[i])]=abs(df["median_"+str(Y[j])+"_on_"+str(X[i])] - df["percent25_"+str(Y[j])+"_on_"+str(X[i])])
+
+        
+        
+        
+print('single index end')    
+    
+#計算每個[X, Z]的Y的統計量
+
+X=["group_id","product_name","area","sub_line","order_weekday","source_1","source_2","unit","begin_month"
+   ,"order_month","first_fly_hour","last_fly_hour","begin_weekday","last_fly_weekday"
+   ,"time_level","people_amount_level"]
+
+
+Z=["group_id","product_name","area","sub_line","order_weekday","source_1","source_2","unit","begin_month"
+   ,"order_month","first_fly_hour","last_fly_hour","begin_weekday","last_fly_weekday"
+   ,"time_level","people_amount_level"]
+
+Y=["time","price_per_order","price","people_amount","price_per_day"]
+
+
+for i in range(len(X)):
+    for k in range(len(Z)):
+        if i < k:
+            for j in range(len(Y)):
+
+                df_mean = df.groupby((X[i],Z[k]))[Y[j]].mean().reset_index(name="mean_"+str(X[i])+"_"+str(Z[k])+"_on_"+str(Y[j]))
+                df = pd.merge(df,df_mean, on=[X[i],Z[k]])
+                
+                df_max = df.groupby((X[i],Z[k]))[Y[j]].max().reset_index(name="max_"+str(X[i])+"_"+str(Z[k])+"_on_"+str(Y[j]))
+                df = pd.merge(df,df_max, on=[X[i],Z[k]])
+                
+                df_min = df.groupby((X[i],Z[k]))[Y[j]].min().reset_index(name="min_"+str(X[i])+"_"+str(Z[k])+"_on_"+str(Y[j]))
+                df = pd.merge(df,df_min, on=[X[i],Z[k]])
+                
+                df_var = df.groupby((X[i],Z[k]))[Y[j]].var().reset_index(name="var_"+str(X[i])+"_"+str(Z[k])+"_on_"+str(Y[j]))
+                df = pd.merge(df,df_var, on=[X[i],Z[k]])
+                
+                df_median = df.groupby((X[i],Z[k]))[Y[j]].median().reset_index(name="median_"+str(X[i])+"_"+str(Z[k])+"_on_"+str(Y[j]))
+                df = pd.merge(df,df_median, on=[X[i],Z[k]])
+                
+                df_quantile = df.groupby((X[i],Z[k]))[Y[j]].quantile().reset_index(name="quantile_"+str(X[i])+"_"+str(Z[k])+"_on_"+str(Y[j]))
+                df = pd.merge(df,df_quantile, on=[X[i],Z[k]])
+                
+                df_mode = df.groupby((X[i],Z[k]))[Y[j]].agg(lambda x: stats.mode(x)[0][0]).reset_index(name="mode_"+str(X[i])+"_"+str(Z[k])+"_on_"+str(Y[j]))
+                df = pd.merge(df,df_mode, on=[X[i],Z[k]])
+                
+                df_percent = df.groupby((X[i],Z[k]))[Y[j]].describe(percentiles=[0.25, 0.75])[['25%','75%']]
+                
+                df_percent.columns=["25p_"+str(X[i])+"_"+str(Z[k])+"_on_"+str(Y[j]),"75p_"+str(X[i])+"_"+str(Z[k])+"_on_"+str(Y[j])]
+                df = df.join(df_percent, on=[X[i],Z[k]])
+                
+                df["diff_"+str(X[i])+"_"+str(Z[k])+"_on_"+str(Y[j])]= df["max_"+str(X[i])+"_"+str(Z[k])+"_on_"+str(Y[j])] - df["min_"+str(X[i])+"_"+str(Z[k])+"_on_"+str(Y[j])]
+                
+                df["dif_mean_med_"+str(X[i])+"_"+str(Z[k])+"_on_"+str(Y[j])]=abs(df["mean_"+str(X[i])+"_"+str(Z[k])+"_on_"+str(Y[j])] - df["median_"+str(X[i])+"_"+str(Z[k])+"_on_"+str(Y[j])])
+
+
+
+
+
+#drop字串型feature
+df=df.drop(["order_date","begin_date","promotion_prog",'index','first_fly_month','first_fly_weekday',"product_name","order_id"],axis=1)
+
+
+#做dummy
+
+dummy_add_again=df[["order_year","order_month","order_weekday","begin_year","begin_month","begin_weekday",'first_fly_hour',
+                             'last_fly_weekday','last_fly_month','last_fly_hour','flight_transfer' ,'goback',
+                             'first_fly_season','last_fly_season','total_trip_time','total_trip_time_per_day']]
+
+df=pd.get_dummies(df,prefix=["source_1","source_2","unit",'first_fly_location','last_fly_location',"sub_line","area",   #dont add again
+                             "order_year","order_month","order_weekday","begin_year","begin_month","begin_weekday",'first_fly_hour',
+                             'last_fly_weekday','last_fly_month','last_fly_hour','flight_transfer' ,'goback',
+                             'first_fly_season','last_fly_season','total_trip_time','total_trip_time_per_day'
+                             ,"price_level","time_level","price_per_order_level","price_per_day_level","days_level","people_amount_level"], 
+                    columns=["source_1","source_2","unit",'first_fly_location','last_fly_location',"sub_line","area",
+                             "order_year","order_month","order_weekday","begin_year","begin_month","begin_weekday",'first_fly_hour',
+                             'last_fly_weekday','last_fly_month','last_fly_hour','flight_transfer','goback',
+                             'first_fly_season','last_fly_season','total_trip_time','total_trip_time_per_day'
+                             ,"price_level","time_level","price_per_order_level","price_per_day_level","days_level","people_amount_level"])
+
+df=pd.concat([df,dummy_add_again],axis=1)
+
+print('dummy end')
+
+#將空值補最小值
+df=df.fillna(df.min())
+
+#儲存data
+df.to_pickle("pre_datafram.pkl")
+print('save pickle end')
