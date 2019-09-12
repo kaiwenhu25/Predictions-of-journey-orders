@@ -8,7 +8,7 @@ from datetime import datetime
 '''
 read_data
 '''
-path = '/Users/garylai/Documents/tbrain_travel/dataset/'
+path = '/Users/Documents/dataset/'
 airline = pd.read_csv(path + 'airline.csv')
 cache_map = pd.read_csv(path + 'cache_map.csv')
 day_schedule = pd.read_csv(path + 'day_schedule.csv')
