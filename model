@@ -1,0 +1,75 @@
+
+import pandas as pd
+from xgboost import XGBClassifier
+import matplotlib.pyplot as plt
+from sklearn.metrics import accuracy_score
+import xgboost as xgb
+from sklearn.metrics import average_precision_score
+import lightgbm as lgb
+from sklearn import preprocessing
+from sklearn import  metrics
+
+#read data
+test_csv=pd.read_csv("testing-set.csv",low_memory=False)
+df = pd.read_pickle("pre_datafram.pkl")
+print('read pickle end')
+
+
+
+
+#split train test validation
+train_X , test = df.iloc[:297020,] , df.iloc[297020:,].drop(['deal_or_not','group_id'],axis=1)
+train_X1=train_X.sort_values(by=['group_id']).reset_index().drop(['index'],axis=1)
+X_valid, X_train, y_valid,  y_train= train_X1.iloc[:74972,:].drop(['deal_or_not',"group_id"],axis=1), train_X1.iloc[74972:,:].drop(['deal_or_not',"group_id"],axis=1) , train_X1.iloc[:74972,]['deal_or_not'],train_X1.iloc[74972:,]['deal_or_not']
+
+
+
+
+#lightgbm
+lgb_train_all=lgb.Dataset(train_X1.drop(['deal_or_not',"group_id"],axis=1),train_X1[['deal_or_not']])  
+num_boost_round_all=round(1.05*1839)
+early_stopping_rounds=30
+params = {
+    'task': 'train',
+    'boosting_type': 'dart',  
+    'max_depth' : 10,
+    'objective': 'xentropy',
+    'metric': {'auc'},  
+    'num_leaves': 55,   
+    'learning_rate': 0.02,  
+    'feature_fraction': 0.8, 
+    'bagging_fraction': 0.9,
+    'bagging_freq': 5, 
+    'verbose': 1 
+}
+
+light_gbm_all=lgb.train(params,lgb_train_all,num_boost_round=num_boost_round_all)
+y_pred_all = light_gbm_all.predict(test, num_iteration=light_gbm_all.best_iteration) 
+
+test_csv["deal_or_not"]=y_pred_all 
+test_csv.to_csv("lightgbm_all.csv", sep=',', encoding='utf-8', index=False)
+
+
+#XGBOOST
+
+num_boost_round_all = round(1.05*250)
+params = {
+"objective": "binary:logistic",
+"booster" : "dart",
+"eval_metric": "auc",
+"eta": 0.04,
+"tree_method": 'exact',
+"max_depth": 6,
+"subsample": 0.07,
+"colsample_bytree": 0.8,
+"silent": 1,
+"seed": 30678,
+"alpha" :0.01,
+"scale_pos_weight" : 0.2457,
+        }
+
+dtrain_all = xgb.DMatrix(train_X1.drop(['deal_or_not',"group_id"],axis=1),train_X1[['deal_or_not']])
+gbm_all = xgb.train(params, dtrain_all, num_boost_round_all)
+test_prediction_all = gbm_all.predict(xgb.DMatrix(test), ntree_limit=gbm_all.best_iteration+1)
+test_csv["deal_or_not"]=test_prediction_all
+test_csv.to_csv("xgboost_all.csv", sep=',', encoding='utf-8', index=False)
